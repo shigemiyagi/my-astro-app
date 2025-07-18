@@ -58,7 +58,6 @@ with st.form(key='birth_info_form'):
         birth_date = st.date_input("📅 生年月日", min_value=datetime(1900, 1, 1), max_value=datetime.now(), value=datetime(1976, 12, 25))
         
     with col2:
-        # ▼▼▼ 修正点：時刻入力をテキストボックスに変更 ▼▼▼
         time_str = st.text_input("⏰ 出生時刻 (24時間形式）", value="16:25")
 
     selected_prefecture = st.selectbox("📍 出生都道府県", options=list(prefecture_data.keys()))
@@ -67,17 +66,15 @@ with st.form(key='birth_info_form'):
 
 # --- ボタンが押されたら計算を実行 ---
 if submit_button:
-    # ▼▼▼ 修正点：入力された時刻文字列をチェック ▼▼▼
     try:
         birth_time = datetime.strptime(time_str, "%H:%M").time()
     except ValueError:
         st.error("時刻の形式が正しくありません。「HH:MM」（例: 16:25）の形式で入力してください。")
-        st.stop() # エラーがあれば処理を中断
+        st.stop()
 
-    # --- 入力値から計算準備 ---
     year, month, day = birth_date.year, birth_date.month, birth_date.day
     hour, minute = birth_time.hour, birth_time.minute
-    tz_hour = 9  # 日本時間に固定
+    tz_hour = 9
     coords = prefecture_data[selected_prefecture]
     lat, lon = coords["lat"], coords["lon"]
     
@@ -91,7 +88,6 @@ if submit_button:
         1
     )[1]
 
-    # --- スイスエフェメリス設定 ---
     ephe_path = 'ephe'
     if not os.path.exists(ephe_path):
         st.error(f"天体暦ファイルが見つかりません。'{ephe_path}' フォルダを配置してください。")
@@ -126,22 +122,32 @@ if submit_button:
     celestial_points["PoF"] = {'id': 'PoF', 'pos': pof_pos, 'is_retro': False, 'speed': 0, 'is_luminary': False}
 
     # --- 結果の表示 ---
-    st.markdown("---")
-    st.header(f"✨ {birth_date.year}年{birth_date.month}月{birth_date.day}日 {birth_time.strftime('%H:%M')}生 ({selected_prefecture})")
+    # ▼▼▼ 修正点：結果をリストに貯めてから最後に出力する ▼▼▼
+    results_to_copy = []
+    
+    header_str = f"✨ {birth_date.year}年{birth_date.month}月{birth_date.day}日 {birth_time.strftime('%H:%M')}生 ({selected_prefecture})"
+    st.header(header_str)
+    results_to_copy.append(header_str)
+    results_to_copy.append("-" * 40) # 区切り線
 
-    st.subheader("🪐 惑星と感受点のサイン")
+    # 惑星と感受点のサイン
+    results_to_copy.append("\n🪐 ## 惑星と感受点のサイン ##")
     for name, data in celestial_points.items():
         pos, sign_index, degree = data['pos'], int(data['pos'] / 30), data['pos'] % 30
         retro_info = "(R)" if data['is_retro'] else ""
         house_num = get_house_number(pos, cusps)
-        st.text(f"{name:<12}: {sign_names[sign_index]:<4} {degree:>5.2f}度 {retro_info:<3} (第{house_num}ハウス)")
+        line = f"{name:<12}: {sign_names[sign_index]:<4} {degree:>5.2f}度 {retro_info:<3} (第{house_num}ハウス)"
+        results_to_copy.append(line)
 
-    st.subheader("🏠 ハウス")
+    # ハウス
+    results_to_copy.append("\n🏠 ## ハウス ##")
     for i in range(12):
         sign_index, degree = int(cusps[i] / 30), cusps[i] % 30
-        st.text(f"第{i+1:<2}ハウス: {sign_names[sign_index]:<4} {degree:.2f}度")
+        line = f"第{i+1:<2}ハウス: {sign_names[sign_index]:<4} {degree:.2f}度"
+        results_to_copy.append(line)
 
-    st.subheader("💫 アスペクト")
+    # アスペクト
+    results_to_copy.append("\n💫 ## アスペクト ##")
     found_aspects = False
     point_names = list(celestial_points.keys())
     for i in range(len(point_names)):
@@ -161,7 +167,12 @@ if submit_button:
                     orb = SEXTILE_ORB
                 current_orb = abs(angle - aspect_angle)
                 if 0 < orb and current_orb < orb:
-                    st.text(f"{p1_name} - {p2_name}: {aspect_name} (オーブ {current_orb:.2f}度)")
+                    line = f"{p1_name} - {p2_name}: {aspect_name} (オーブ {current_orb:.2f}度)"
+                    results_to_copy.append(line)
                     found_aspects = True
     if not found_aspects:
-        st.write("設定されたオーブ内に主要なアスペクトは見つかりませんでした。")
+        results_to_copy.append("設定されたオーブ内に主要なアスペクトは見つかりませんでした。")
+
+    # --- コピー用のテキストエリアに全結果を表示 ---
+    final_results_string = "\n".join(results_to_copy)
+    st.code(final_results_string, language=None)
