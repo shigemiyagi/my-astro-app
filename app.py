@@ -58,7 +58,8 @@ with st.form(key='birth_info_form'):
         birth_date = st.date_input("📅 生年月日", min_value=datetime(1900, 1, 1), max_value=datetime.now(), value=datetime(1990, 1, 1))
         
     with col2:
-        birth_time = st.time_input("⏰ 出生時刻", value=datetime(1990, 1, 1, 12, 0).time())
+        # 1分単位で入力できるようにstep=60秒を指定
+        birth_time = st.time_input("⏰ 出生時刻", value=datetime(1990, 1, 1, 12, 0).time(), step=60)
 
     selected_prefecture = st.selectbox("📍 出生都道府県", options=list(prefecture_data.keys()))
     
