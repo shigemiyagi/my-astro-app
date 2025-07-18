@@ -55,11 +55,11 @@ st.write("出生情報を入力して、ホロスコープを計算します。"
 with st.form(key='birth_info_form'):
     col1, col2 = st.columns(2)
     with col1:
-        birth_date = st.date_input("📅 生年月日", min_value=datetime(1900, 1, 1), max_value=datetime.now(), value=datetime(1990, 1, 1))
+        birth_date = st.date_input("📅 生年月日", min_value=datetime(1900, 1, 1), max_value=datetime.now(), value=datetime(1976, 12, 25))
         
     with col2:
-        # 1分単位で入力できるようにstep=60秒を指定
-        birth_time = st.time_input("⏰ 出生時刻", value=datetime(1990, 1, 1, 12, 0).time(), step=60)
+        # ▼▼▼ 修正点：時刻入力をテキストボックスに変更 ▼▼▼
+        time_str = st.text_input("⏰ 出生時刻 (24時間形式）", value="16:25")
 
     selected_prefecture = st.selectbox("📍 出生都道府県", options=list(prefecture_data.keys()))
     
@@ -67,6 +67,13 @@ with st.form(key='birth_info_form'):
 
 # --- ボタンが押されたら計算を実行 ---
 if submit_button:
+    # ▼▼▼ 修正点：入力された時刻文字列をチェック ▼▼▼
+    try:
+        birth_time = datetime.strptime(time_str, "%H:%M").time()
+    except ValueError:
+        st.error("時刻の形式が正しくありません。「HH:MM」（例: 16:25）の形式で入力してください。")
+        st.stop() # エラーがあれば処理を中断
+
     # --- 入力値から計算準備 ---
     year, month, day = birth_date.year, birth_date.month, birth_date.day
     hour, minute = birth_time.hour, birth_time.minute
