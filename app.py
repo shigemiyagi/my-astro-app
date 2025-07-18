@@ -129,17 +129,12 @@ if submit_button:
     # --- 1. ネイタルチャート計算 ---
     natal_points = {}
     cusps, ascmc = swe.houses(jd_et, lat, lon, b'P')
-    # ▼▼▼ 修正ブロック ▼▼▼
     for i, p_id in enumerate(CELESTIAL_IDS):
-        if p_id == swe.MEAN_APOG: # リリスの計算を特別扱い
-            res = swe.calc(jd_et, p_id, iflag)
-            pos = res[0]
-            speed = 0.0 # 速度は0として扱う
-        else:
-            res = swe.calc_ut(jd_et, p_id, iflag)
-            pos, speed = res[0], res[3]
+        # ▼▼▼ 修正点1：エラー回避のため、より安全なデータ取得方法に変更 ▼▼▼
+        res = swe.calc(jd_et, p_id, iflag) if p_id == swe.MEAN_APOG else swe.calc_ut(jd_et, p_id, iflag)
+        pos = res[0]
+        speed = res[3] if len(res) > 3 else 0.0 # 速度データがあれば取得、なければ0
         natal_points[CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
-    # ▲▲▲ 修正ブロック ▲▲▲
     
     natal_points["ASC"] = {'id': 'ASC', 'pos': ascmc[0], 'is_retro': False, 'speed': 0, 'is_luminary': True}
     natal_points["MC"] = {'id': 'MC', 'pos': ascmc[1], 'is_retro': False, 'speed': 0, 'is_luminary': True}
@@ -168,8 +163,10 @@ if submit_button:
     transit_points = {}
     for i, p_id in enumerate(CELESTIAL_IDS):
         if p_id in [swe.MEAN_NODE, swe.MEAN_APOG, swe.CHIRON]: continue
+        # ▼▼▼ 修正点2：同様に安全なデータ取得方法に変更 ▼▼▼
         res = swe.calc_ut(jd_transit, p_id, iflag)
-        pos, speed = res[0], res[3]
+        pos = res[0]
+        speed = res[3] if len(res) > 3 else 0.0
         transit_points[CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
     calculate_aspects(transit_points, natal_points, "T.", "N.", results_to_copy)
 
@@ -179,8 +176,10 @@ if submit_button:
     progressed_points = {}
     for i, p_id in enumerate(CELESTIAL_IDS):
         if p_id in [swe.URANUS, swe.NEPTUNE, swe.PLUTO, swe.MEAN_NODE, swe.MEAN_APOG, swe.CHIRON]: continue
+        # ▼▼▼ 修正点3：同様に安全なデータ取得方法に変更 ▼▼▼
         res = swe.calc_ut(jd_prog, p_id, iflag)
-        pos, speed = res[0], res[3]
+        pos = res[0]
+        speed = res[3] if len(res) > 3 else 0.0
         progressed_points[CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
     calculate_aspects(progressed_points, natal_points, "P.", "N.", results_to_copy)
 
