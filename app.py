@@ -31,20 +31,57 @@ prefecture_data = {
     "沖縄県": {"lat": 26.212, "lon": 127.681}
 }
 
+# --- 定数リスト ---
+SIGN_NAMES = ["牡羊座", "牡牛座", "双子座", "蟹座", "獅子座", "乙女座", "天秤座", "蠍座", "射手座", "山羊座", "水瓶座", "魚座"]
+CELESTIAL_NAMES = ["太陽", "月", "水星", "金星", "火星", "木星", "土星", "天王星", "海王星", "冥王星", "キロン", "ドラゴンヘッド", "リリス"]
+CELESTIAL_IDS = [swe.SUN, swe.MOON, swe.MERCURY, swe.VENUS, swe.MARS, swe.JUPITER, swe.SATURN, swe.URANUS, swe.NEPTUNE, swe.PLUTO, swe.CHIRON, swe.MEAN_NODE, swe.MEAN_APOG]
+ASPECT_NAMES = {0: "コンジャンクション (0度)", 60: "セクスタイル (60度)", 90: "スクエア (90度)", 120: "トライン (120度)", 180: "オポジション (180度)"}
+MAJOR_ASPECT_ORB_LUMINARIES, MAJOR_ASPECT_ORB_OTHERS, SEXTILE_ORB = 8, 6, 3
+
 # --- 関数定義 ---
 def get_house_number(degree, cusps):
     """度数からハウス番号を特定する"""
     cusps_with_13th = list(cusps) + [cusps[0]]
     for i in range(12):
-        start_cusp = cusps_with_13th[i]
-        end_cusp = cusps_with_13th[i+1]
+        start_cusp, end_cusp = cusps_with_13th[i], cusps_with_13th[i+1]
         if start_cusp > end_cusp:
-            if degree >= start_cusp or degree < end_cusp:
-                return i + 1
+            if degree >= start_cusp or degree < end_cusp: return i + 1
         else:
-            if start_cusp <= degree < end_cusp:
-                return i + 1
+            if start_cusp <= degree < end_cusp: return i + 1
     return -1
+
+def calculate_aspects(points1, points2, title1, title2, results_list):
+    """2つの天体群間のアスペクトを計算し、リストに追加する"""
+    results_list.append(f"\n💫 ## {title1} - {title2} アスペクト ##")
+    found = False
+    p1_names, p2_names = list(points1.keys()), list(points2.keys())
+    
+    for i in range(len(p1_names)):
+        for j in range(len(p2_names)):
+            if points1 is points2 and i >= j: continue
+            
+            p1_name, p2_name = p1_names[i], p2_names[j]
+            if p1_name in ["ドラゴンヘッド", "リリス", "キロン"] and p2_name in ["ASC", "MC", "PoF"]: continue
+            if p2_name in ["ドラゴンヘッド", "リリス", "キロン"] and p1_name in ["ASC", "MC", "PoF"]: continue
+            
+            p1, p2 = points1[p1_name], points2[p2_name]
+            is_major_point_involved = p1['is_luminary'] or p2['is_luminary']
+            angle = abs(p1['pos'] - p2['pos'])
+            if angle > 180: angle = 360 - angle
+            
+            for aspect_angle, aspect_name in ASPECT_NAMES.items():
+                orb = 0
+                if aspect_angle in [0, 90, 120, 180]:
+                    orb = MAJOR_ASPECT_ORB_LUMINARIES if is_major_point_involved else MAJOR_ASPECT_ORB_OTHERS
+                elif aspect_angle == 60:
+                    orb = SEXTILE_ORB
+                current_orb = abs(angle - aspect_angle)
+                if 0 < orb and current_orb < orb:
+                    line = f"{title1}{p1_name} - {title2}{p2_name}: {aspect_name} (オーブ {current_orb:.2f}度)"
+                    results_list.append(line)
+                    found = True
+    if not found:
+        results_list.append("設定されたオーブ内に主要なアスペクトは見つかりませんでした。")
 
 # --- Streamlit UI設定 ---
 st.set_page_config(page_title="西洋占星術カリキュレータ", page_icon="🪐")
@@ -55,12 +92,11 @@ st.write("出生情報を入力して、ホロスコープを計算します。"
 with st.form(key='birth_info_form'):
     col1, col2 = st.columns(2)
     with col1:
-        birth_date = st.date_input("📅 生年月日", min_value=datetime(1900, 1, 1), max_value=datetime.now(), value=datetime(1976, 12, 25))
-        
+        birth_date = st.date_input("📅 生年月日", min_value=datetime(1900, 1, 1), value=datetime(1976, 12, 25))
     with col2:
-        time_str = st.text_input("⏰ 出生時刻 (24時間形式）", value="16:25")
+        time_str = st.text_input("⏰ 出生時刻", value="16:25")
 
-    selected_prefecture = st.selectbox("📍 出生都道府県", options=list(prefecture_data.keys()))
+    selected_prefecture = st.selectbox("📍 出生都道府県", options=list(prefecture_data.keys()), index=46)
     
     submit_button = st.form_submit_button(label='ホロスコープを計算する ✨')
 
@@ -72,106 +108,80 @@ if submit_button:
         st.error("時刻の形式が正しくありません。「HH:MM」（例: 16:25）の形式で入力してください。")
         st.stop()
 
+    # --- ネイタル（出生）データの準備 ---
     year, month, day = birth_date.year, birth_date.month, birth_date.day
     hour, minute = birth_time.hour, birth_time.minute
-    tz_hour = 9
     coords = prefecture_data[selected_prefecture]
     lat, lon = coords["lat"], coords["lon"]
-    
     user_birth_time = datetime(year, month, day, hour, minute)
-    user_timezone = timezone(timedelta(hours=tz_hour))
-    birth_time_aware = user_birth_time.replace(tzinfo=user_timezone)
-    birth_time_utc = birth_time_aware.astimezone(timezone.utc)
-    jd_et = swe.utc_to_jd(
-        birth_time_utc.year, birth_time_utc.month, birth_time_utc.day,
-        birth_time_utc.hour, birth_time_utc.minute, birth_time_utc.second,
-        1
-    )[1]
+    birth_time_utc = user_birth_time.replace(tzinfo=timezone(timedelta(hours=9))).astimezone(timezone.utc)
+    jd_et = swe.utc_to_jd(birth_time_utc.year, birth_time_utc.month, birth_time_utc.day, birth_time_utc.hour, birth_time_utc.minute, birth_time_utc.second, 1)[1]
+    
+    # ▼▼▼ 修正点：年齢を自動計算 ▼▼▼
+    today = datetime.now().date()
+    age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
 
+    # --- Ephemerisファイル設定 ---
     ephe_path = 'ephe'
     if not os.path.exists(ephe_path):
         st.error(f"天体暦ファイルが見つかりません。'{ephe_path}' フォルダを配置してください。")
         st.stop()
     swe.set_ephe_path(ephe_path)
-    h_sys = b'P'
 
-    # --- 定数リスト ---
-    celestial_ids = [swe.SUN, swe.MOON, swe.MERCURY, swe.VENUS, swe.MARS, swe.JUPITER, swe.SATURN, swe.URANUS, swe.NEPTUNE, swe.PLUTO, swe.CHIRON, swe.MEAN_NODE, swe.MEAN_APOG]
-    celestial_names = ["太陽", "月", "水星", "金星", "火星", "木星", "土星", "天王星", "海王星", "冥王星", "キロン", "ドラゴンヘッド", "リリス"]
-    sign_names = ["牡羊座", "牡牛座", "双子座", "蟹座", "獅子座", "乙女座", "天秤座", "蠍座", "射手座", "山羊座", "水瓶座", "魚座"]
-    aspect_names = {0: "コンジャンクション (0度)", 60: "セクスタイル (60度)", 90: "スクエア (90度)", 120: "トライン (120度)", 180: "オポジション (180度)"}
-    MAJOR_ASPECT_ORB_LUMINARIES, MAJOR_ASPECT_ORB_OTHERS, SEXTILE_ORB = 8, 6, 3
-
-    # --- 計算と結果の保存 ---
-    celestial_points = {}
+    # --- 計算の実行 ---
     iflag = swe.FLG_SWIEPH | swe.FLG_SPEED
-    cusps, ascmc = swe.houses(jd_et, lat, lon, h_sys)
-    asc_pos, mc_pos = ascmc[0], ascmc[1]
-
-    for i, p_id in enumerate(celestial_ids):
-        if p_id == swe.MEAN_APOG:
-            xx, ret = swe.calc(jd_et, p_id, iflag)
-        else:
-            xx, ret = swe.calc_ut(jd_et, p_id, iflag)
-        pos, speed = xx[0], xx[3]
-        celestial_points[celestial_names[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
-
-    celestial_points["ASC"] = {'id': 'ASC', 'pos': asc_pos, 'is_retro': False, 'speed': 0, 'is_luminary': True}
-    celestial_points["MC"] = {'id': 'MC', 'pos': mc_pos, 'is_retro': False, 'speed': 0, 'is_luminary': True}
-    pof_pos = (asc_pos + celestial_points["月"]['pos'] - celestial_points["太陽"]['pos']) % 360
-    celestial_points["PoF"] = {'id': 'PoF', 'pos': pof_pos, 'is_retro': False, 'speed': 0, 'is_luminary': False}
-
-    # --- 結果の表示 ---
-    # ▼▼▼ 修正点：結果をリストに貯めてから最後に出力する ▼▼▼
     results_to_copy = []
     
-    header_str = f"✨ {birth_date.year}年{birth_date.month}月{birth_date.day}日 {birth_time.strftime('%H:%M')}生 ({selected_prefecture})"
-    st.header(header_str)
-    results_to_copy.append(header_str)
-    results_to_copy.append("-" * 40) # 区切り線
+    # 1. ネイタルチャート計算
+    natal_points = {}
+    cusps, ascmc = swe.houses(jd_et, lat, lon, b'P')
+    for i, p_id in enumerate(CELESTIAL_IDS):
+        res = swe.calc(jd_et, p_id, iflag) if p_id == swe.MEAN_APOG else swe.calc_ut(jd_et, p_id, iflag)
+        pos, speed = res[0], res[3]
+        natal_points[CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
+    natal_points["ASC"] = {'id': 'ASC', 'pos': ascmc[0], 'is_retro': False, 'speed': 0, 'is_luminary': True}
+    natal_points["MC"] = {'id': 'MC', 'pos': ascmc[1], 'is_retro': False, 'speed': 0, 'is_luminary': True}
+    natal_points["PoF"] = {'id': 'PoF', 'pos': (ascmc[0] + natal_points["月"]['pos'] - natal_points["太陽"]['pos']) % 360, 'is_retro': False, 'speed': 0, 'is_luminary': False}
 
-    # 惑星と感受点のサイン
-    results_to_copy.append("\n🪐 ## 惑星と感受点のサイン ##")
-    for name, data in celestial_points.items():
+    # --- 結果の整形と表示 ---
+    header_str = f"✨ {birth_date.year}年{birth_date.month}月{birth_date.day}日 {birth_time.strftime('%H:%M')}生 ({selected_prefecture}) - 年齢: {age}歳"
+    st.header(header_str)
+    
+    # ネイタル情報
+    results_to_copy.append(header_str)
+    results_to_copy.append("-" * 40)
+    results_to_copy.append("\n🪐 ## ネイタルチャート ##")
+    for name, data in natal_points.items():
         pos, sign_index, degree = data['pos'], int(data['pos'] / 30), data['pos'] % 30
         retro_info = "(R)" if data['is_retro'] else ""
         house_num = get_house_number(pos, cusps)
-        line = f"{name:<12}: {sign_names[sign_index]:<4} {degree:>5.2f}度 {retro_info:<3} (第{house_num}ハウス)"
-        results_to_copy.append(line)
-
-    # ハウス
-    results_to_copy.append("\n🏠 ## ハウス ##")
+        results_to_copy.append(f"{name:<12}: {SIGN_NAMES[sign_index]:<4} {degree:>5.2f}度 {retro_info:<3} (第{house_num}ハウス)")
+    results_to_copy.append("\n🏠 ## ハウス (ネイタル) ##")
     for i in range(12):
-        sign_index, degree = int(cusps[i] / 30), cusps[i] % 30
-        line = f"第{i+1:<2}ハウス: {sign_names[sign_index]:<4} {degree:.2f}度"
-        results_to_copy.append(line)
+        results_to_copy.append(f"第{i+1:<2}ハウス: {SIGN_NAMES[int(cusps[i] / 30)]:<4} {cusps[i] % 30:.2f}度")
+    calculate_aspects(natal_points, natal_points, "N.", "N.", results_to_copy)
 
-    # アスペクト
-    results_to_copy.append("\n💫 ## アスペクト ##")
-    found_aspects = False
-    point_names = list(celestial_points.keys())
-    for i in range(len(point_names)):
-        for j in range(i + 1, len(point_names)):
-            p1_name, p2_name = point_names[i], point_names[j]
-            if p1_name in ["ドラゴンヘッド", "リリス", "キロン"] and p2_name in ["ASC", "MC", "PoF"]: continue
-            if p2_name in ["ドラゴンヘッド", "リリス", "キロン"] and p1_name in ["ASC", "MC", "PoF"]: continue
-            p1, p2 = celestial_points[p1_name], celestial_points[p2_name]
-            is_major_point_involved = p1['is_luminary'] or p2['is_luminary']
-            angle = abs(p1['pos'] - p2['pos'])
-            if angle > 180: angle = 360 - angle
-            for aspect_angle, aspect_name in aspect_names.items():
-                orb = 0
-                if aspect_angle in [0, 90, 120, 180]:
-                    orb = MAJOR_ASPECT_ORB_LUMINARIES if is_major_point_involved else MAJOR_ASPECT_ORB_OTHERS
-                elif aspect_angle == 60:
-                    orb = SEXTILE_ORB
-                current_orb = abs(angle - aspect_angle)
-                if 0 < orb and current_orb < orb:
-                    line = f"{p1_name} - {p2_name}: {aspect_name} (オーブ {current_orb:.2f}度)"
-                    results_to_copy.append(line)
-                    found_aspects = True
-    if not found_aspects:
-        results_to_copy.append("設定されたオーブ内に主要なアスペクトは見つかりませんでした。")
+    # トランジット情報
+    transit_dt_utc = datetime.now(timezone.utc)
+    jd_transit = swe.utc_to_jd(transit_dt_utc.year, transit_dt_utc.month, transit_dt_utc.day, transit_dt_utc.hour, transit_dt_utc.minute, transit_dt_utc.second, 1)[1]
+    transit_points = {}
+    for i, p_id in enumerate(CELESTIAL_IDS):
+        if p_id in [swe.MEAN_NODE, swe.MEAN_APOG, swe.CHIRON]: continue
+        res = swe.calc_ut(jd_transit, p_id, iflag)
+        pos, speed = res[0], res[3]
+        transit_points[CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
+    calculate_aspects(transit_points, natal_points, "T.", "N.", results_to_copy)
+
+    # プログレス情報
+    prog_dt_utc = birth_time_utc + timedelta(days=age)
+    jd_prog = swe.utc_to_jd(prog_dt_utc.year, prog_dt_utc.month, prog_dt_utc.day, prog_dt_utc.hour, prog_dt_utc.minute, prog_dt_utc.second, 1)[1]
+    progressed_points = {}
+    for i, p_id in enumerate(CELESTIAL_IDS):
+        if p_id in [swe.URANUS, swe.NEPTUNE, swe.PLUTO, swe.MEAN_NODE, swe.MEAN_APOG, swe.CHIRON]: continue
+        res = swe.calc_ut(jd_prog, p_id, iflag)
+        pos, speed = res[0], res[3]
+        progressed_points[CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
+    calculate_aspects(progressed_points, natal_points, "P.", "N.", results_to_copy)
 
     # --- コピー用のテキストエリアに全結果を表示 ---
     final_results_string = "\n".join(results_to_copy)
