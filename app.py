@@ -130,10 +130,10 @@ if submit_button:
     natal_points = {}
     cusps, ascmc = swe.houses(jd_et, lat, lon, b'P')
     for i, p_id in enumerate(CELESTIAL_IDS):
-        # ▼▼▼ 修正点1：エラー回避のため、より安全なデータ取得方法に変更 ▼▼▼
+        # ▼▼▼ 修正点1：戻り値の構造を正しく扱う ▼▼▼
         res = swe.calc(jd_et, p_id, iflag) if p_id == swe.MEAN_APOG else swe.calc_ut(jd_et, p_id, iflag)
-        pos = res[0]
-        speed = res[3] if len(res) > 3 else 0.0 # 速度データがあれば取得、なければ0
+        pos = res[0][0] # 経度はタプルの最初の要素
+        speed = res[0][3] if len(res[0]) > 3 else 0.0 # 速度データがあれば取得、なければ0
         natal_points[CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
     
     natal_points["ASC"] = {'id': 'ASC', 'pos': ascmc[0], 'is_retro': False, 'speed': 0, 'is_luminary': True}
@@ -165,8 +165,8 @@ if submit_button:
         if p_id in [swe.MEAN_NODE, swe.MEAN_APOG, swe.CHIRON]: continue
         # ▼▼▼ 修正点2：同様に安全なデータ取得方法に変更 ▼▼▼
         res = swe.calc_ut(jd_transit, p_id, iflag)
-        pos = res[0]
-        speed = res[3] if len(res) > 3 else 0.0
+        pos = res[0][0]
+        speed = res[0][3] if len(res[0]) > 3 else 0.0
         transit_points[CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
     calculate_aspects(transit_points, natal_points, "T.", "N.", results_to_copy)
 
@@ -178,8 +178,8 @@ if submit_button:
         if p_id in [swe.URANUS, swe.NEPTUNE, swe.PLUTO, swe.MEAN_NODE, swe.MEAN_APOG, swe.CHIRON]: continue
         # ▼▼▼ 修正点3：同様に安全なデータ取得方法に変更 ▼▼▼
         res = swe.calc_ut(jd_prog, p_id, iflag)
-        pos = res[0]
-        speed = res[3] if len(res) > 3 else 0.0
+        pos = res[0][0]
+        speed = res[0][3] if len(res[0]) > 3 else 0.0
         progressed_points[CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
     calculate_aspects(progressed_points, natal_points, "P.", "N.", results_to_copy)
 
