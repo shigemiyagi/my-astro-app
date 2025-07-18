@@ -40,7 +40,6 @@ MAJOR_ASPECT_ORB_LUMINARIES, MAJOR_ASPECT_ORB_OTHERS, SEXTILE_ORB = 8, 6, 3
 
 # --- 関数定義 ---
 def get_house_number(degree, cusps):
-    """度数からハウス番号を特定する"""
     cusps_with_13th = list(cusps) + [cusps[0]]
     for i in range(12):
         start_cusp, end_cusp = cusps_with_13th[i], cusps_with_13th[i+1]
@@ -51,7 +50,6 @@ def get_house_number(degree, cusps):
     return -1
 
 def calculate_aspects(points1, points2, title1, title2, results_list):
-    """2つの天体群間のアスペクトを計算し、リストに追加する"""
     results_list.append(f"\n💫 ## {title1} - {title2} アスペクト ##")
     found = False
     p1_names, p2_names = list(points1.keys()), list(points2.keys())
@@ -108,7 +106,6 @@ if submit_button:
         st.error("時刻の形式が正しくありません。「HH:MM」（例: 16:25）の形式で入力してください。")
         st.stop()
 
-    # --- ネイタル（出生）データの準備 ---
     year, month, day = birth_date.year, birth_date.month, birth_date.day
     hour, minute = birth_time.hour, birth_time.minute
     coords = prefecture_data[selected_prefecture]
@@ -117,28 +114,33 @@ if submit_button:
     birth_time_utc = user_birth_time.replace(tzinfo=timezone(timedelta(hours=9))).astimezone(timezone.utc)
     jd_et = swe.utc_to_jd(birth_time_utc.year, birth_time_utc.month, birth_time_utc.day, birth_time_utc.hour, birth_time_utc.minute, birth_time_utc.second, 1)[1]
     
-    # ▼▼▼ 修正点：年齢を自動計算 ▼▼▼
     today = datetime.now().date()
     age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
 
-    # --- Ephemerisファイル設定 ---
     ephe_path = 'ephe'
     if not os.path.exists(ephe_path):
         st.error(f"天体暦ファイルが見つかりません。'{ephe_path}' フォルダを配置してください。")
         st.stop()
     swe.set_ephe_path(ephe_path)
 
-    # --- 計算の実行 ---
     iflag = swe.FLG_SWIEPH | swe.FLG_SPEED
     results_to_copy = []
     
-    # 1. ネイタルチャート計算
+    # --- 1. ネイタルチャート計算 ---
     natal_points = {}
     cusps, ascmc = swe.houses(jd_et, lat, lon, b'P')
+    # ▼▼▼ 修正ブロック ▼▼▼
     for i, p_id in enumerate(CELESTIAL_IDS):
-        res = swe.calc(jd_et, p_id, iflag) if p_id == swe.MEAN_APOG else swe.calc_ut(jd_et, p_id, iflag)
-        pos, speed = res[0], res[3]
+        if p_id == swe.MEAN_APOG: # リリスの計算を特別扱い
+            res = swe.calc(jd_et, p_id, iflag)
+            pos = res[0]
+            speed = 0.0 # 速度は0として扱う
+        else:
+            res = swe.calc_ut(jd_et, p_id, iflag)
+            pos, speed = res[0], res[3]
         natal_points[CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
+    # ▲▲▲ 修正ブロック ▲▲▲
+    
     natal_points["ASC"] = {'id': 'ASC', 'pos': ascmc[0], 'is_retro': False, 'speed': 0, 'is_luminary': True}
     natal_points["MC"] = {'id': 'MC', 'pos': ascmc[1], 'is_retro': False, 'speed': 0, 'is_luminary': True}
     natal_points["PoF"] = {'id': 'PoF', 'pos': (ascmc[0] + natal_points["月"]['pos'] - natal_points["太陽"]['pos']) % 360, 'is_retro': False, 'speed': 0, 'is_luminary': False}
@@ -147,7 +149,6 @@ if submit_button:
     header_str = f"✨ {birth_date.year}年{birth_date.month}月{birth_date.day}日 {birth_time.strftime('%H:%M')}生 ({selected_prefecture}) - 年齢: {age}歳"
     st.header(header_str)
     
-    # ネイタル情報
     results_to_copy.append(header_str)
     results_to_copy.append("-" * 40)
     results_to_copy.append("\n🪐 ## ネイタルチャート ##")
@@ -161,7 +162,7 @@ if submit_button:
         results_to_copy.append(f"第{i+1:<2}ハウス: {SIGN_NAMES[int(cusps[i] / 30)]:<4} {cusps[i] % 30:.2f}度")
     calculate_aspects(natal_points, natal_points, "N.", "N.", results_to_copy)
 
-    # トランジット情報
+    # --- 2. トランジット情報 ---
     transit_dt_utc = datetime.now(timezone.utc)
     jd_transit = swe.utc_to_jd(transit_dt_utc.year, transit_dt_utc.month, transit_dt_utc.day, transit_dt_utc.hour, transit_dt_utc.minute, transit_dt_utc.second, 1)[1]
     transit_points = {}
@@ -172,7 +173,7 @@ if submit_button:
         transit_points[CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
     calculate_aspects(transit_points, natal_points, "T.", "N.", results_to_copy)
 
-    # プログレス情報
+    # --- 3. プログレス情報 ---
     prog_dt_utc = birth_time_utc + timedelta(days=age)
     jd_prog = swe.utc_to_jd(prog_dt_utc.year, prog_dt_utc.month, prog_dt_utc.day, prog_dt_utc.hour, prog_dt_utc.minute, prog_dt_utc.second, 1)[1]
     progressed_points = {}
