@@ -126,14 +126,13 @@ if submit_button:
     iflag = swe.FLG_SWIEPH | swe.FLG_SPEED
     results_to_copy = []
     
-    # --- 1. ネイタルチャート計算 ---
+    # 1. ネイタルチャート計算
     natal_points = {}
     cusps, ascmc = swe.houses(jd_et, lat, lon, b'P')
     for i, p_id in enumerate(CELESTIAL_IDS):
-        # ▼▼▼ 修正点1：戻り値の構造を正しく扱う ▼▼▼
         res = swe.calc(jd_et, p_id, iflag) if p_id == swe.MEAN_APOG else swe.calc_ut(jd_et, p_id, iflag)
-        pos = res[0][0] # 経度はタプルの最初の要素
-        speed = res[0][3] if len(res[0]) > 3 else 0.0 # 速度データがあれば取得、なければ0
+        pos = res[0][0]
+        speed = res[0][3] if len(res[0]) > 3 else 0.0
         natal_points[CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
     
     natal_points["ASC"] = {'id': 'ASC', 'pos': ascmc[0], 'is_retro': False, 'speed': 0, 'is_luminary': True}
@@ -157,31 +156,49 @@ if submit_button:
         results_to_copy.append(f"第{i+1:<2}ハウス: {SIGN_NAMES[int(cusps[i] / 30)]:<4} {cusps[i] % 30:.2f}度")
     calculate_aspects(natal_points, natal_points, "N.", "N.", results_to_copy)
 
-    # --- 2. トランジット情報 ---
+    # 2. トランジット情報
     transit_dt_utc = datetime.now(timezone.utc)
     jd_transit = swe.utc_to_jd(transit_dt_utc.year, transit_dt_utc.month, transit_dt_utc.day, transit_dt_utc.hour, transit_dt_utc.minute, transit_dt_utc.second, 1)[1]
     transit_points = {}
     for i, p_id in enumerate(CELESTIAL_IDS):
         if p_id in [swe.MEAN_NODE, swe.MEAN_APOG, swe.CHIRON]: continue
-        # ▼▼▼ 修正点2：同様に安全なデータ取得方法に変更 ▼▼▼
         res = swe.calc_ut(jd_transit, p_id, iflag)
         pos = res[0][0]
         speed = res[0][3] if len(res[0]) > 3 else 0.0
         transit_points[CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
     calculate_aspects(transit_points, natal_points, "T.", "N.", results_to_copy)
 
-    # --- 3. プログレス情報 ---
+    # 3. プログレス＆ソーラーアークのための日付計算
     prog_dt_utc = birth_time_utc + timedelta(days=age)
     jd_prog = swe.utc_to_jd(prog_dt_utc.year, prog_dt_utc.month, prog_dt_utc.day, prog_dt_utc.hour, prog_dt_utc.minute, prog_dt_utc.second, 1)[1]
+
+    # 4. プログレス情報
     progressed_points = {}
     for i, p_id in enumerate(CELESTIAL_IDS):
         if p_id in [swe.URANUS, swe.NEPTUNE, swe.PLUTO, swe.MEAN_NODE, swe.MEAN_APOG, swe.CHIRON]: continue
-        # ▼▼▼ 修正点3：同様に安全なデータ取得方法に変更 ▼▼▼
         res = swe.calc_ut(jd_prog, p_id, iflag)
         pos = res[0][0]
         speed = res[0][3] if len(res[0]) > 3 else 0.0
         progressed_points[CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
     calculate_aspects(progressed_points, natal_points, "P.", "N.", results_to_copy)
+    
+    # ▼▼▼ 5. ソーラーアーク情報 ▼▼▼
+    natal_sun_pos = natal_points["太陽"]['pos']
+    progressed_sun_pos = swe.calc_ut(jd_prog, swe.SUN, iflag)[0][0]
+    
+    solar_arc = progressed_sun_pos - natal_sun_pos
+    if solar_arc < 0:
+        solar_arc += 360
+
+    solar_arc_points = {}
+    for name, data in natal_points.items():
+        # PoFは感受点なのでソーラーアークでは動かさないのが一般的
+        if name == "PoF": continue
+        
+        sa_pos = (data['pos'] + solar_arc) % 360
+        solar_arc_points[name] = {'id': data['id'], 'pos': sa_pos, 'is_luminary': data['is_luminary']}
+    
+    calculate_aspects(solar_arc_points, natal_points, "SA.", "N.", results_to_copy)
 
     # --- コピー用のテキストエリアに全結果を表示 ---
     final_results_string = "\n".join(results_to_copy)
