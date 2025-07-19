@@ -2,6 +2,7 @@ import streamlit as st
 import swisseph as swe
 from datetime import datetime, timezone, timedelta
 import os
+import math
 
 # --- 都道府県の緯度経度データ ---
 prefecture_data = {
@@ -75,27 +76,19 @@ def calculate_aspects(points1, points2, title1, title2, results_list):
                     found = True
     if not found: results_list.append("設定されたオーブ内に主要なアスペクトは見つかりませんでした。")
 
-# ▼▼▼ 修正点1：ソーラーリターン計算用の新しい関数を追加 ▼▼▼
 def find_solar_return_jd(birth_time_utc, natal_sun_lon, return_year):
-    """手動でソーラーリターンのユリウス日を探す"""
-    # 最初の推測値として、リターン年の誕生日時を設定
     guess_dt = birth_time_utc.replace(year=return_year)
     jd_current = swe.utc_to_jd(guess_dt.year, guess_dt.month, guess_dt.day, guess_dt.hour, guess_dt.minute, guess_dt.second, 1)[1]
-
-    # 5回繰り返して精度を上げる
     for _ in range(5):
         res = swe.calc_ut(jd_current, swe.SUN, swe.FLG_SWIEPH | swe.FLG_SPEED)
         current_sun_lon = res[0][0]
         sun_speed = res[0][3]
-        if sun_speed == 0: return None # エラー回避
-
+        if sun_speed == 0: return None
         offset = current_sun_lon - natal_sun_lon
         if offset > 180: offset -= 360
         if offset < -180: offset += 360
-        
         time_adjustment = -offset / sun_speed
         jd_current += time_adjustment
-        
     return jd_current
 
 # --- Streamlit UI設定 ---
@@ -112,11 +105,9 @@ with st.form(key='birth_info_form'):
     with col2:
         time_str = st.text_input("⏰ 出生時刻", value="16:25")
     selected_prefecture = st.selectbox("📍 出生都道府県", options=list(prefecture_data.keys()), index=46)
-    
     st.markdown("---")
     st.subheader("ソーラーリターン用の情報")
     sr_prefecture = st.selectbox("📍 現在の滞在場所（都道府県）", options=list(prefecture_data.keys()), index=46)
-
     submit_button = st.form_submit_button(label='ホロスコープを計算する ✨')
 
 # --- ボタンが押されたら計算を実行 ---
@@ -214,7 +205,7 @@ if submit_button:
         solar_arc_points[name] = {'id': data['id'], 'pos': sa_pos, 'is_luminary': data['is_luminary']}
     calculate_aspects(solar_arc_points, natal_points, "SA.", "N.", results_to_copy)
 
-    # ▼▼▼ 修正点2：新しい関数を使ってソーラーリターンを計算 ▼▼▼
+    # 6. ソーラーリターン情報
     jd_solar_return = find_solar_return_jd(birth_time_utc, natal_sun_pos, return_year)
     if jd_solar_return is None:
         st.error("ソーラーリターンの計算に失敗しました。")
@@ -222,9 +213,23 @@ if submit_button:
         sr_coords = prefecture_data[sr_prefecture]
         sr_lat, sr_lon = sr_coords["lat"], sr_coords["lon"]
         
-        # ユリウス日からdatetimeオブジェクトに変換
-        sr_time_tuple = swe.jdut1_to_datetime(jd_solar_return)
-        sr_dt_utc = datetime(*sr_time_tuple, tzinfo=timezone.utc)
+        # ▼▼▼ 修正点：swe.revjulを使って日時変換 ▼▼▼
+        y, m, d, h_decimal = swe.revjul(jd_solar_return, swe.GREG_CAL)
+        h = int(h_decimal)
+        minute_decimal = (h_decimal - h) * 60
+        mi = int(minute_decimal)
+        second_decimal = (minute_decimal - mi) * 60
+        s = int(round(second_decimal)) # 秒は丸める
+        
+        # 秒が60になった場合の繰り上げ処理
+        if s >= 60:
+            mi += 1
+            s = 0
+        if mi >= 60:
+            h += 1
+            mi = 0
+        
+        sr_dt_utc = datetime(y, m, d, h, mi, s, tzinfo=timezone.utc)
         sr_dt_local = sr_dt_utc.astimezone(timezone(timedelta(hours=9)))
         sr_header = f"🎂 ## {return_year}年 ソーラーリターンチャート ##\n({sr_dt_local.strftime('%Y-%m-%d %H:%M:%S')} @ {sr_prefecture})"
         results_to_copy.append("\n" + sr_header)
