@@ -171,7 +171,15 @@ if submit_button:
             pos, speed = res[0][0], (res[0][3] if len(res[0]) > 3 else 0.0)
             natal_points[GEO_CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
         natal_points["ASC"], natal_points["MC"] = {'id': 'ASC', 'pos': ascmc[0], 'is_retro': False, 'speed': 0, 'is_luminary': True}, {'id': 'MC', 'pos': ascmc[1], 'is_retro': False, 'speed': 0, 'is_luminary': True}
-        natal_points["PoF"] = {'id': 'PoF', 'pos': (ascmc[0] + natal_points["月"]['pos'] - natal_points["太陽"]['pos']) % 360, 'is_retro': False, 'speed': 0, 'is_luminary': False}
+        
+        # ▼▼▼ 修正点1：PoFの計算を昼夜で分岐 ▼▼▼
+        sun_house = get_house_number(natal_points["太陽"]['pos'], cusps)
+        if 1 <= sun_house <= 6: # 夜生まれ
+            pof_pos = (ascmc[0] + natal_points["太陽"]['pos'] - natal_points["月"]['pos'] + 360) % 360
+        else: # 昼生まれ
+            pof_pos = (ascmc[0] + natal_points["月"]['pos'] - natal_points["太陽"]['pos'] + 360) % 360
+        natal_points["PoF"] = {'id': 'PoF', 'pos': pof_pos, 'is_retro': False, 'speed': 0, 'is_luminary': False}
+
         header_str = f"✨ {birth_date.year}年{birth_date.month}月{birth_date.day}日 {birth_time.strftime('%H:%M')}生 ({selected_prefecture}) - 年齢: {age}歳"
         st.header(header_str)
         results_to_copy.append("--- ジオセントリック ---"); results_to_copy.append(header_str); results_to_copy.append("-" * 40)
@@ -184,7 +192,7 @@ if submit_button:
         results_to_copy.append("\n🏠 ## ハウス (ネイタル) ##")
         for i in range(12): results_to_copy.append(f"第{i+1:<2}ハウス: {SIGN_NAMES[int(cusps[i] / 30)]:<4} {cusps[i] % 30:.2f}度")
         calculate_aspects(natal_points, natal_points, "N.", "N.", results_to_copy)
-
+        
         # --- 2. ヘリオセントリック情報 ---
         st.info("ヘリオセントリックを計算中...")
         results_to_copy.append("\n" + "="*40); results_to_copy.append("--- ヘリオセントリック ---")
@@ -206,7 +214,8 @@ if submit_button:
         jd_transit = swe.utc_to_jd(transit_dt_utc.year, transit_dt_utc.month, transit_dt_utc.day, transit_dt_utc.hour, transit_dt_utc.minute, transit_dt_utc.second, 1)[1]
         transit_points = {}
         for i, p_id in enumerate(GEO_CELESTIAL_IDS):
-            if p_id in [swe.MOON, swe.MEAN_NODE, swe.MEAN_APOG, swe.CHIRON]: continue
+            # ▼▼▼ 修正点2：トランジットの除外対象をリリスのみに変更 ▼▼▼
+            if p_id in [swe.MEAN_APOG]: continue
             res = swe.calc_ut(jd_transit, p_id, iflag)
             pos, speed = res[0][0], (res[0][3] if len(res[0]) > 3 else 0.0)
             transit_points[GEO_CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
@@ -218,7 +227,8 @@ if submit_button:
         jd_prog = swe.utc_to_jd(prog_dt_utc.year, prog_dt_utc.month, prog_dt_utc.day, prog_dt_utc.hour, prog_dt_utc.minute, prog_dt_utc.second, 1)[1]
         progressed_points = {}
         for i, p_id in enumerate(GEO_CELESTIAL_IDS):
-            if p_id in [swe.MOON, swe.URANUS, swe.NEPTUNE, swe.PLUTO, swe.MEAN_NODE, swe.MEAN_APOG, swe.CHIRON]: continue
+            # ▼▼▼ 修正点2：プログレスの除外対象から月を削除 ▼▼▼
+            if p_id in [swe.URANUS, swe.NEPTUNE, swe.PLUTO, swe.MEAN_NODE, swe.MEAN_APOG, swe.CHIRON]: continue
             res = swe.calc_ut(jd_prog, p_id, iflag)
             pos, speed = res[0][0], (res[0][3] if len(res[0]) > 3 else 0.0)
             progressed_points[GEO_CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
@@ -231,7 +241,8 @@ if submit_button:
         solar_arc = (progressed_sun_pos - natal_sun_pos + 360) % 360
         solar_arc_points = {}
         for name, data in natal_points.items():
-            if name in ["PoF", "月"]: continue
+            # ▼▼▼ 修正点2：ソーラーアークの除外対象から月を削除 ▼▼▼
+            if name in ["PoF"]: continue
             sa_pos = (data['pos'] + solar_arc) % 360
             solar_arc_points[name] = {'id': data['id'], 'pos': sa_pos, 'is_luminary': data['is_luminary']}
         calculate_aspects(solar_arc_points, natal_points, "SA.", "N.", results_to_copy)
@@ -282,4 +293,7 @@ if submit_button:
         st.success("全ての計算が完了しました。")
 
     except Exception as e:
+        # どのステップでエラーが起きたか特定するのは難しいため、汎用的なメッセージを表示
         st.error(f"計算中に予期せぬエラーが発生しました。詳細: {e}")
+        # デバッグ用にトレースバック全体を表示
+        st.exception(e)
