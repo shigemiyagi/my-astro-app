@@ -84,7 +84,8 @@ def find_solar_return_jd(birth_time_utc, natal_sun_lon, return_year):
     jd_current = swe.utc_to_jd(guess_dt.year, guess_dt.month, guess_dt.day, guess_dt.hour, guess_dt.minute, guess_dt.second, 1)[1]
     for _ in range(5):
         res = swe.calc_ut(jd_current, swe.SUN, swe.FLG_SWIEPH | swe.FLG_SPEED)
-        current_sun_lon, sun_speed = res[0][0], res[0][3]
+        current_sun_lon = res[0][0]
+        sun_speed = res[0][3]
         if sun_speed == 0: return None
         offset = current_sun_lon - natal_sun_lon
         if offset > 180: offset -= 360
@@ -141,7 +142,7 @@ if submit_button:
     iflag = swe.FLG_SWIEPH | swe.FLG_SPEED
     results_to_copy = []
     
-    # ... (ジオ、ヘリオ、トランジット、プログレス、ソーラーアーク、ソーラーリターンの計算部分は変更なし) ...
+    # ... (これより上の計算部分は変更なし) ...
     # 1. ネイタルチャート計算 (ジオセントリック)
     natal_points = {}
     cusps, ascmc = swe.houses(jd_et, lat, lon, b'P')
@@ -154,6 +155,7 @@ if submit_button:
     natal_points["MC"] = {'id': 'MC', 'pos': ascmc[1], 'is_retro': False, 'speed': 0, 'is_luminary': True}
     natal_points["PoF"] = {'id': 'PoF', 'pos': (ascmc[0] + natal_points["月"]['pos'] - natal_points["太陽"]['pos']) % 360, 'is_retro': False, 'speed': 0, 'is_luminary': False}
 
+    # --- 結果の整形と表示 ---
     header_str = f"✨ {birth_date.year}年{birth_date.month}月{birth_date.day}日 {birth_time.strftime('%H:%M')}生 ({selected_prefecture}) - 年齢: {age}歳"
     st.header(header_str)
     results_to_copy.append("--- ジオセントリック ---")
@@ -225,8 +227,20 @@ if submit_button:
         results_to_copy.append("\n" + "="*40)
         sr_coords = prefecture_data[sr_prefecture]
         sr_lat, sr_lon = sr_coords["lat"], sr_coords["lon"]
+        # ▼▼▼ 修正ブロック：時分秒の計算を一行ずつに分割 ▼▼▼
         y, m, d, h_decimal = swe.revjul(jd_solar_return, swe.GREG_CAL)
-        h, mi, s = int(h_decimal), int((h_decimal - h) * 60), int((((h_decimal - h) * 60) - int((h_decimal - h) * 60)) * 60)
+        h = int(h_decimal)
+        minute_decimal = (h_decimal - h) * 60
+        mi = int(minute_decimal)
+        second_decimal = (minute_decimal - mi) * 60
+        s = int(round(second_decimal))
+        
+        # 秒が60になった場合の繰り上げ処理
+        if s >= 60: s, mi = 0, mi + 1
+        if mi >= 60: mi, h = 0, h + 1
+        if h >= 24: h, d = 0, d + 1 # 日付をまたぐケースも考慮
+        # ▲▲▲ 修正ブロック ▲▲▲
+
         sr_dt_utc = datetime(y, m, d, h, mi, s, tzinfo=timezone.utc)
         sr_dt_local = sr_dt_utc.astimezone(timezone(timedelta(hours=9)))
         sr_header = f"🎂 ## {return_year}年 ソーラーリターンチャート ##\n({sr_dt_local.strftime('%Y-%m-%d %H:%M:%S')} @ {sr_prefecture})"
@@ -248,26 +262,19 @@ if submit_button:
         for i in range(12): results_to_copy.append(f"第{i+1:<2}ハウス: {SIGN_NAMES[int(sr_cusps[i] / 30)]:<4} {sr_cusps[i] % 30:.2f}度")
         calculate_aspects(solar_return_points, solar_return_points, "SR.", "SR.", results_to_copy)
     
-    # ▼▼▼ 7. ハーモニクス情報 ▼▼▼
+    # 7. ハーモニクス情報
     results_to_copy.append("\n" + "="*40)
     results_to_copy.append("--- ハーモニクス ---")
     harmonic_numbers = [5, 7, 16, 18, 24, 50]
-
     for n in harmonic_numbers:
         results_to_copy.append(f"\n🎵 ## H{n} ハーモニクスチャート ##")
         h_points = {}
-        # ネイタルのジオセントリック天体（ASC/MC等も含む）をベースに計算
         for name, data in natal_points.items():
             h_pos = (data['pos'] * n) % 360
             h_points[name] = {'id': data['id'], 'pos': h_pos, 'is_luminary': data['is_luminary']}
-        
-        # ハーモニクスチャートの天体位置を表示
         for name, data in h_points.items():
             pos, sign_index, degree = data['pos'], int(data['pos'] / 30), data['pos'] % 30
-            # ハウスや逆行はないのでシンプルに表示
             results_to_copy.append(f"{name:<12}: {SIGN_NAMES[sign_index]:<4} {degree:>5.2f}度")
-        
-        # ハーモニクスチャート内のアスペクトを計算
         calculate_aspects(h_points, h_points, f"H{n}.", f"H{n}.", results_to_copy)
 
     # --- コピー用のテキストエリアに全結果を表示 ---
