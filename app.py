@@ -34,8 +34,10 @@ prefecture_data = {
 
 # --- 定数リスト ---
 SIGN_NAMES = ["牡羊座", "牡牛座", "双子座", "蟹座", "獅子座", "乙女座", "天秤座", "蠍座", "射手座", "山羊座", "水瓶座", "魚座"]
-CELESTIAL_NAMES = ["太陽", "月", "水星", "金星", "火星", "木星", "土星", "天王星", "海王星", "冥王星", "キロン", "ドラゴンヘッド", "リリス"]
-CELESTIAL_IDS = [swe.SUN, swe.MOON, swe.MERCURY, swe.VENUS, swe.MARS, swe.JUPITER, swe.SATURN, swe.URANUS, swe.NEPTUNE, swe.PLUTO, swe.CHIRON, swe.MEAN_NODE, swe.MEAN_APOG]
+GEO_CELESTIAL_NAMES = ["太陽", "月", "水星", "金星", "火星", "木星", "土星", "天王星", "海王星", "冥王星", "キロン", "ドラゴンヘッド", "リリス"]
+GEO_CELESTIAL_IDS = [swe.SUN, swe.MOON, swe.MERCURY, swe.VENUS, swe.MARS, swe.JUPITER, swe.SATURN, swe.URANUS, swe.NEPTUNE, swe.PLUTO, swe.CHIRON, swe.MEAN_NODE, swe.MEAN_APOG]
+HELIO_CELESTIAL_NAMES = ["地球", "水星", "金星", "火星", "木星", "土星", "天王星", "海王星", "冥王星", "キロン"]
+HELIO_CELESTIAL_IDS = [swe.EARTH, swe.MERCURY, swe.VENUS, swe.MARS, swe.JUPITER, swe.SATURN, swe.URANUS, swe.NEPTUNE, swe.PLUTO, swe.CHIRON]
 ASPECT_NAMES = {0: "コンジャンクション (0度)", 60: "セクスタイル (60度)", 90: "スクエア (90度)", 120: "トライン (120度)", 180: "オポジション (180度)"}
 MAJOR_ASPECT_ORB_LUMINARIES, MAJOR_ASPECT_ORB_OTHERS, SEXTILE_ORB = 8, 6, 3
 
@@ -139,15 +141,14 @@ if submit_button:
     iflag = swe.FLG_SWIEPH | swe.FLG_SPEED
     results_to_copy = []
     
-    # ... (ネイタル、トランジット、プログレス、ソーラーアークの計算部分は変更なし) ...
-    # 1. ネイタルチャート計算
+    # 1. ネイタルチャート計算 (ジオセントリック)
     natal_points = {}
     cusps, ascmc = swe.houses(jd_et, lat, lon, b'P')
-    for i, p_id in enumerate(CELESTIAL_IDS):
+    for i, p_id in enumerate(GEO_CELESTIAL_IDS):
         res = swe.calc(jd_et, p_id, iflag) if p_id == swe.MEAN_APOG else swe.calc_ut(jd_et, p_id, iflag)
         pos = res[0][0]
         speed = res[0][3] if len(res[0]) > 3 else 0.0
-        natal_points[CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
+        natal_points[GEO_CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
     natal_points["ASC"] = {'id': 'ASC', 'pos': ascmc[0], 'is_retro': False, 'speed': 0, 'is_luminary': True}
     natal_points["MC"] = {'id': 'MC', 'pos': ascmc[1], 'is_retro': False, 'speed': 0, 'is_luminary': True}
     natal_points["PoF"] = {'id': 'PoF', 'pos': (ascmc[0] + natal_points["月"]['pos'] - natal_points["太陽"]['pos']) % 360, 'is_retro': False, 'speed': 0, 'is_luminary': False}
@@ -155,9 +156,11 @@ if submit_button:
     # --- 結果の整形と表示 ---
     header_str = f"✨ {birth_date.year}年{birth_date.month}月{birth_date.day}日 {birth_time.strftime('%H:%M')}生 ({selected_prefecture}) - 年齢: {age}歳"
     st.header(header_str)
+    
+    results_to_copy.append("--- ジオセントリック ---")
     results_to_copy.append(header_str)
     results_to_copy.append("-" * 40)
-    results_to_copy.append("\n🪐 ## ネイタルチャート ##")
+    results_to_copy.append("\n🪐 ## ネイタルチャート (ジオセントリック) ##")
     for name, data in natal_points.items():
         pos, sign_index, degree = data['pos'], int(data['pos'] / 30), data['pos'] % 30
         retro_info = "(R)" if data['is_retro'] else ""
@@ -168,94 +171,87 @@ if submit_button:
         results_to_copy.append(f"第{i+1:<2}ハウス: {SIGN_NAMES[int(cusps[i] / 30)]:<4} {cusps[i] % 30:.2f}度")
     calculate_aspects(natal_points, natal_points, "N.", "N.", results_to_copy)
 
-    # 2. トランジット情報
+    # ... (トランジット、プログレス、ソーラーアークの計算部分は変更なし) ...
     transit_dt_utc = datetime.now(timezone.utc)
     jd_transit = swe.utc_to_jd(transit_dt_utc.year, transit_dt_utc.month, transit_dt_utc.day, transit_dt_utc.hour, transit_dt_utc.minute, transit_dt_utc.second, 1)[1]
     transit_points = {}
-    for i, p_id in enumerate(CELESTIAL_IDS):
-        if p_id in [swe.MEAN_NODE, swe.MEAN_APOG, swe.CHIRON]: continue
+    for i, p_id in enumerate(GEO_CELESTIAL_IDS):
+        if p_id in [swe.MOON, swe.MEAN_NODE, swe.MEAN_APOG, swe.CHIRON]: continue
         res = swe.calc_ut(jd_transit, p_id, iflag)
-        pos = res[0][0]
-        speed = res[0][3] if len(res[0]) > 3 else 0.0
-        transit_points[CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
+        pos, speed = res[0][0], (res[0][3] if len(res[0]) > 3 else 0.0)
+        transit_points[GEO_CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
     calculate_aspects(transit_points, natal_points, "T.", "N.", results_to_copy)
 
-    # 3. プログレス＆ソーラーアークのための日付計算
     prog_dt_utc = birth_time_utc + timedelta(days=age)
     jd_prog = swe.utc_to_jd(prog_dt_utc.year, prog_dt_utc.month, prog_dt_utc.day, prog_dt_utc.hour, prog_dt_utc.minute, prog_dt_utc.second, 1)[1]
-
-    # 4. プログレス情報
     progressed_points = {}
-    for i, p_id in enumerate(CELESTIAL_IDS):
-        if p_id in [swe.URANUS, swe.NEPTUNE, swe.PLUTO, swe.MEAN_NODE, swe.MEAN_APOG, swe.CHIRON]: continue
+    for i, p_id in enumerate(GEO_CELESTIAL_IDS):
+        if p_id in [swe.MOON, swe.URANUS, swe.NEPTUNE, swe.PLUTO, swe.MEAN_NODE, swe.MEAN_APOG, swe.CHIRON]: continue
         res = swe.calc_ut(jd_prog, p_id, iflag)
-        pos = res[0][0]
-        speed = res[0][3] if len(res[0]) > 3 else 0.0
-        progressed_points[CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
+        pos, speed = res[0][0], (res[0][3] if len(res[0]) > 3 else 0.0)
+        progressed_points[GEO_CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
     calculate_aspects(progressed_points, natal_points, "P.", "N.", results_to_copy)
     
-    # 5. ソーラーアーク情報
     natal_sun_pos = natal_points["太陽"]['pos']
     progressed_sun_pos = swe.calc_ut(jd_prog, swe.SUN, iflag)[0][0]
     solar_arc = (progressed_sun_pos - natal_sun_pos + 360) % 360
     solar_arc_points = {}
     for name, data in natal_points.items():
-        if name == "PoF": continue
+        if name in ["PoF", "月"]: continue
         sa_pos = (data['pos'] + solar_arc) % 360
         solar_arc_points[name] = {'id': data['id'], 'pos': sa_pos, 'is_luminary': data['is_luminary']}
     calculate_aspects(solar_arc_points, natal_points, "SA.", "N.", results_to_copy)
 
-    # 6. ソーラーリターン情報
+    # ▼▼▼ 7. ヘリオセントリック情報 ▼▼▼
+    results_to_copy.append("\n" + "="*40)
+    results_to_copy.append("--- ヘリオセントリック ---")
+    
+    helio_iflag = iflag | swe.FLG_HELCTR
+    helio_points = {}
+    for i, p_id in enumerate(HELIO_CELESTIAL_IDS):
+        res = swe.calc_ut(jd_et, p_id, helio_iflag)
+        pos = res[0][0]
+        # 地球を太陽・月と同格の光体として扱う
+        is_luminary = p_id == swe.EARTH
+        helio_points[HELIO_CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_luminary': is_luminary}
+    
+    results_to_copy.append("\n🪐 ## ネイタルチャート (ヘリオセントリック) ##")
+    for name, data in helio_points.items():
+        pos, sign_index, degree = data['pos'], int(data['pos'] / 30), data['pos'] % 30
+        results_to_copy.append(f"{name:<12}: {SIGN_NAMES[sign_index]:<4} {degree:>5.2f}度")
+    calculate_aspects(helio_points, helio_points, "H.", "H.", results_to_copy)
+    
+    # ... (ソーラーリターンの計算部分は変更なし) ...
     jd_solar_return = find_solar_return_jd(birth_time_utc, natal_sun_pos, return_year)
     if jd_solar_return is None:
         st.error("ソーラーリターンの計算に失敗しました。")
     else:
+        results_to_copy.append("\n" + "="*40)
         sr_coords = prefecture_data[sr_prefecture]
         sr_lat, sr_lon = sr_coords["lat"], sr_coords["lon"]
-        
-        # ▼▼▼ 修正点：swe.revjulを使って日時変換 ▼▼▼
         y, m, d, h_decimal = swe.revjul(jd_solar_return, swe.GREG_CAL)
-        h = int(h_decimal)
-        minute_decimal = (h_decimal - h) * 60
-        mi = int(minute_decimal)
-        second_decimal = (minute_decimal - mi) * 60
-        s = int(round(second_decimal)) # 秒は丸める
-        
-        # 秒が60になった場合の繰り上げ処理
-        if s >= 60:
-            mi += 1
-            s = 0
-        if mi >= 60:
-            h += 1
-            mi = 0
-        
+        h, mi, s = int(h_decimal), int((h_decimal - int(h_decimal)) * 60), int((((h_decimal - int(h_decimal)) * 60) - int((h_decimal - int(h_decimal)) * 60)) * 60)
         sr_dt_utc = datetime(y, m, d, h, mi, s, tzinfo=timezone.utc)
         sr_dt_local = sr_dt_utc.astimezone(timezone(timedelta(hours=9)))
         sr_header = f"🎂 ## {return_year}年 ソーラーリターンチャート ##\n({sr_dt_local.strftime('%Y-%m-%d %H:%M:%S')} @ {sr_prefecture})"
         results_to_copy.append("\n" + sr_header)
-
         solar_return_points = {}
         sr_cusps, sr_ascmc = swe.houses(jd_solar_return, sr_lat, sr_lon, b'P')
-        for i, p_id in enumerate(CELESTIAL_IDS):
+        for i, p_id in enumerate(GEO_CELESTIAL_IDS):
             res = swe.calc_ut(jd_solar_return, p_id, iflag)
-            pos = res[0][0]
-            speed = res[0][3] if len(res[0]) > 3 else 0.0
-            solar_return_points[CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
-
+            pos, speed = res[0][0], (res[0][3] if len(res[0]) > 3 else 0.0)
+            solar_return_points[GEO_CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
         solar_return_points["ASC"] = {'id': 'ASC', 'pos': sr_ascmc[0], 'is_retro': False, 'speed': 0, 'is_luminary': True}
         solar_return_points["MC"] = {'id': 'MC', 'pos': sr_ascmc[1], 'is_retro': False, 'speed': 0, 'is_luminary': True}
-        
         results_to_copy.append("\n🪐 ## 惑星のサイン (ソーラーリターン) ##")
         for name, data in solar_return_points.items():
             pos, sign_index, degree = data['pos'], int(data['pos'] / 30), data['pos'] % 30
             retro_info = "(R)" if data['is_retro'] else ""
             house_num = get_house_number(pos, sr_cusps)
             results_to_copy.append(f"{name:<12}: {SIGN_NAMES[sign_index]:<4} {degree:>5.2f}度 {retro_info:<3} (第{house_num}ハウス)")
-
         results_to_copy.append("\n🏠 ## ハウス (ソーラーリターン) ##")
         for i in range(12):
             results_to_copy.append(f"第{i+1:<2}ハウス: {SIGN_NAMES[int(sr_cusps[i] / 30)]:<4} {sr_cusps[i] % 30:.2f}度")
-
         calculate_aspects(solar_return_points, solar_return_points, "SR.", "SR.", results_to_copy)
 
     # --- コピー用のテキストエリアに全結果を表示 ---
