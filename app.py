@@ -122,6 +122,15 @@ st.title("🪐 西洋占星術カリキュレータ")
 st.write("出生情報と現在の滞在場所を入力して、ホロスコープを計算します。")
 
 # ▼▼▼ UI部分を修正 ▼▼▼
+# UIの状態を即時反映させるため、チェックボックスをフォームの外に移動
+st.subheader("出生地の入力方法")
+use_manual_coords_birth = st.checkbox("海外で生まれた / 緯度経度を直接入力する", key="manual_birth")
+
+st.subheader("ソーラーリターン用の滞在場所の入力方法")
+use_manual_coords_sr = st.checkbox("現在地が海外 / 緯度経度を直接入力する", key="manual_sr")
+
+st.markdown("---") # 区切り線
+
 with st.form(key='birth_info_form'):
     st.subheader("出生情報")
     col1, col2 = st.columns(2)
@@ -135,8 +144,7 @@ with st.form(key='birth_info_form'):
     with col2:
         time_str = st.text_input("⏰ 出生時刻", value="16:25")
 
-    use_manual_coords_birth = st.checkbox("海外で生まれた / 緯度経度を直接入力する", key="manual_birth_coords")
-
+    # フォーム内の入力欄。チェックボックスの状態に応じて有効/無効が切り替わる
     selected_prefecture = st.selectbox(
         "📍 出生都道府県",
         options=list(prefecture_data.keys()),
@@ -163,8 +171,6 @@ with st.form(key='birth_info_form'):
     st.markdown("---")
     st.subheader("ソーラーリターン用の情報")
     
-    use_manual_coords_sr = st.checkbox("現在地が海外 / 緯度経度を直接入力する", key="manual_sr_coords")
-
     sr_prefecture = st.selectbox(
         "📍 現在の滞在場所（都道府県）",
         options=list(prefecture_data.keys()),
