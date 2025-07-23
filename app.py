@@ -72,7 +72,6 @@ def calculate_aspects(points1, points2, title1, title2, results_list):
                 elif aspect_angle == 60: orb = SEXTILE_ORB
                 elif aspect_angle == 72: orb = QUINTILE_ORB
                 current_orb = abs(angle - aspect_angle)
-                # ▼▼▼ 修正点1：冗長な条件を削除 ▼▼▼
                 if current_orb < orb:
                     line = f"{title1}{p1_name} - {title2}{p2_name}: {aspect_name} (オーブ {current_orb:.2f}度)"
                     results_list.append(line)
@@ -112,10 +111,10 @@ def calculate_harmonic_conjunctions(natal_points, results_list):
             for n in target_harmonics:
                 harmonic_angle = (angle * n) % 360
                 if harmonic_angle < harmonic_orb or harmonic_angle > (360 - harmonic_orb):
-                    line = f"N.{p1_name} - N.{p2_name} (約 {angle:.1f}度) は **H{n}** でコンジャンクションになります。"
+                    line = f"N.{p1_name} - N.{p2_name} (約 {angle:.1f}度) は H{n} でコンジャンクションになります。"
                     found_harmonics.append(line)
-    if found_harmonics: results_list.extend(found_harmonics)
-    else: results_list.append("指定されたハーモニクス数でコンジャンクションになるアスペクトは見つかりませんでした。")
+    if found_harmonics: results_to_extend(found_harmonics)
+    else: results_to_append("指定されたハーモニクス数でコンジャンクションになるアスペクトは見つかりませんでした。")
 
 # --- Streamlit UI設定 ---
 st.set_page_config(page_title="西洋占星術カリキュレータ", page_icon="🪐")
@@ -125,13 +124,38 @@ with st.form(key='birth_info_form'):
     st.subheader("出生情報")
     col1, col2 = st.columns(2)
     with col1:
-        birth_date = st.date_input("📅 生年月日", min_value=datetime(1900, 1, 1), value=datetime(1976, 12, 25))
+        # ▼▼▼ 修正1: 生年月日の入力範囲を2099年までにする ▼▼▼
+        birth_date = st.date_input("📅 生年月日", min_value=datetime(1900, 1, 1), max_value=datetime(2099, 12, 31), value=datetime(1976, 12, 25))
     with col2:
         time_str = st.text_input("⏰ 出生時刻", value="16:25")
+    
+    # ▼▼▼ 修正2: 出生地の緯度経度を手入力する機能を追加 ▼▼▼
     selected_prefecture = st.selectbox("📍 出生都道府県", options=list(prefecture_data.keys()), index=46)
+    manual_birth_coords = st.checkbox("緯度・経度を直接入力する（海外など）", key="manual_birth")
+    birth_lat = 0.0
+    birth_lon = 0.0
+    if manual_birth_coords:
+        col_lat, col_lon = st.columns(2)
+        with col_lat:
+            birth_lat = st.number_input("出生地の緯度", min_value=-90.0, max_value=90.0, value=26.212, format="%.3f")
+        with col_lon:
+            birth_lon = st.number_input("出生地の経度", min_value=-180.0, max_value=180.0, value=127.681, format="%.3f")
+
     st.markdown("---")
     st.subheader("ソーラーリターン用の情報")
+    
+    # ▼▼▼ 修正3: ソーラーリターン滞在地の緯度経度を手入力する機能を追加 ▼▼▼
     sr_prefecture = st.selectbox("📍 現在の滞在場所（都道府県）", options=list(prefecture_data.keys()), index=46)
+    manual_sr_coords = st.checkbox("緯度・経度を直接入力する（海外など）", key="manual_sr")
+    sr_lat_input = 0.0
+    sr_lon_input = 0.0
+    if manual_sr_coords:
+        col_sr_lat, col_sr_lon = st.columns(2)
+        with col_sr_lat:
+            sr_lat_input = st.number_input("滞在地の緯度", min_value=-90.0, max_value=90.0, value=26.212, format="%.3f")
+        with col_sr_lon:
+            sr_lon_input = st.number_input("滞在地の経度", min_value=-180.0, max_value=180.0, value=127.681, format="%.3f")
+
     submit_button = st.form_submit_button(label='ホロスコープを計算する ✨')
 
 # --- ボタンが押されたら計算を実行 ---
@@ -148,8 +172,16 @@ if submit_button:
         # --- 基礎データ準備 ---
         year, month, day = birth_date.year, birth_date.month, birth_date.day
         hour, minute = birth_time.hour, birth_time.minute
-        coords = prefecture_data[selected_prefecture]
-        lat, lon = coords["lat"], coords["lon"]
+        
+        # ▼▼▼ 修正2: 手入力された出生地の緯度経度を優先して使用 ▼▼▼
+        if manual_birth_coords:
+            lat, lon = birth_lat, birth_lon
+            birth_location_name = f"緯度:{lat}, 経度:{lon}"
+        else:
+            coords = prefecture_data[selected_prefecture]
+            lat, lon = coords["lat"], coords["lon"]
+            birth_location_name = selected_prefecture
+            
         user_birth_time = datetime(year, month, day, hour, minute)
         birth_time_utc = user_birth_time.replace(tzinfo=timezone(timedelta(hours=9))).astimezone(timezone.utc)
         jd_et = swe.utc_to_jd(birth_time_utc.year, birth_time_utc.month, birth_time_utc.day, birth_time_utc.hour, birth_time_utc.minute, birth_time_utc.second, 1)[1]
@@ -176,8 +208,11 @@ if submit_button:
         if 1 <= sun_house <= 6: pof_pos = (ascmc[0] + natal_points["太陽"]['pos'] - natal_points["月"]['pos'] + 360) % 360
         else: pof_pos = (ascmc[0] + natal_points["月"]['pos'] - natal_points["太陽"]['pos'] + 360) % 360
         natal_points["PoF"] = {'id': 'PoF', 'pos': pof_pos, 'is_retro': False, 'speed': 0, 'is_luminary': False}
-        header_str = f"✨ {birth_date.year}年{birth_date.month}月{birth_date.day}日 {birth_time.strftime('%H:%M')}生 ({selected_prefecture}) - 年齢: {age}歳"
+        
+        # ▼▼▼ 修正: ヘッダーに出力する地名を動的に変更 ▼▼▼
+        header_str = f"✨ {birth_date.year}年{birth_date.month}月{birth_date.day}日 {birth_time.strftime('%H:%M')}生 ({birth_location_name}) - 年齢: {age}歳"
         st.header(header_str)
+        
         results_to_copy.append("--- ジオセントリック ---"); results_to_copy.append(header_str); results_to_copy.append("-" * 40)
         results_to_copy.append("\n🪐 ## ネイタルチャート (ジオセントリック) ##")
         for name, data in natal_points.items():
@@ -210,7 +245,6 @@ if submit_button:
         jd_transit = swe.utc_to_jd(transit_dt_utc.year, transit_dt_utc.month, transit_dt_utc.day, transit_dt_utc.hour, transit_dt_utc.minute, transit_dt_utc.second, 1)[1]
         transit_points = {}
         for i, p_id in enumerate(GEO_CELESTIAL_IDS):
-            # ▼▼▼ 修正点2：トランジットの除外対象を削除 ▼▼▼
             res = swe.calc(jd_transit, p_id, iflag) if p_id == swe.MEAN_APOG else swe.calc_ut(jd_transit, p_id, iflag)
             pos, speed = res[0][0], (res[0][3] if len(res[0]) > 3 else 0.0)
             transit_points[GEO_CELESTIAL_NAMES[i]] = {'id': p_id, 'pos': pos, 'is_retro': speed < 0, 'speed': speed, 'is_luminary': p_id in [swe.SUN, swe.MOON]}
@@ -246,8 +280,16 @@ if submit_button:
         if jd_solar_return is None: st.error("ソーラーリターンの計算に失敗しました。")
         else:
             results_to_copy.append("\n" + "="*40)
-            sr_coords = prefecture_data[sr_prefecture]
-            sr_lat, sr_lon = sr_coords["lat"], sr_coords["lon"]
+            
+            # ▼▼▼ 修正3: 手入力されたソーラーリターン滞在地の緯度経度を優先して使用 ▼▼▼
+            if manual_sr_coords:
+                sr_lat, sr_lon = sr_lat_input, sr_lon_input
+                sr_location_name = f"緯度:{sr_lat}, 経度:{sr_lon}"
+            else:
+                sr_coords = prefecture_data[sr_prefecture]
+                sr_lat, sr_lon = sr_coords["lat"], sr_coords["lon"]
+                sr_location_name = sr_prefecture
+            
             y, m, d, h_decimal = swe.revjul(jd_solar_return, swe.GREG_CAL)
             h = int(h_decimal); minute_decimal = (h_decimal - h) * 60
             mi = int(minute_decimal); second_decimal = (minute_decimal - mi) * 60
@@ -257,7 +299,10 @@ if submit_button:
             if h >= 24: h, d = 0, d + 1
             sr_dt_utc = datetime(y, m, d, h, mi, s, tzinfo=timezone.utc)
             sr_dt_local = sr_dt_utc.astimezone(timezone(timedelta(hours=9)))
-            sr_header = f"🎂 ## {return_year}年 ソーラーリターンチャート ##\n({sr_dt_local.strftime('%Y-%m-%d %H:%M:%S')} @ {sr_prefecture})"
+            
+            # ▼▼▼ 修正: ヘッダーに出力する地名を動的に変更 ▼▼▼
+            sr_header = f"🎂 ## {return_year}年 ソーラーリターンチャート ##\n({sr_dt_local.strftime('%Y-%m-%d %H:%M:%S')} @ {sr_location_name})"
+            
             results_to_copy.append("\n" + sr_header)
             solar_return_points = {}
             sr_cusps, sr_ascmc = swe.houses(jd_solar_return, sr_lat, sr_lon, b'P')
