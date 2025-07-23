@@ -330,7 +330,8 @@ if submit_button:
         # 出生時刻をUTCに変換 (入力はJSTとみなす)
         user_birth_time_local = datetime.combine(birth_date, birth_time)
         jst = timezone(timedelta(hours=9))
-        birth_time_utc = jst.localize(user_birth_time_local).astimezone(timezone.utc)
+        # ▼▼▼【エラー修正】 'localize' を 'replace' に変更 ▼▼▼
+        birth_time_utc = user_birth_time_local.replace(tzinfo=jst).astimezone(timezone.utc)
         
         # UTとETのユリウス日を取得
         jd_ut_natal, jd_et_natal = swe.utc_to_jd(birth_time_utc.year, birth_time_utc.month, birth_time_utc.day, birth_time_utc.hour, birth_time_utc.minute, birth_time_utc.second, 1)
