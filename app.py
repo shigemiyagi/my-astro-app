@@ -330,7 +330,6 @@ if submit_button:
         # 出生時刻をUTCに変換 (入力はJSTとみなす)
         user_birth_time_local = datetime.combine(birth_date, birth_time)
         jst = timezone(timedelta(hours=9))
-        # ▼▼▼【エラー修正】 'localize' を 'replace' に変更 ▼▼▼
         birth_time_utc = user_birth_time_local.replace(tzinfo=jst).astimezone(timezone.utc)
         
         # UTとETのユリウス日を取得
@@ -416,9 +415,9 @@ if submit_button:
                     sr_lat, sr_lon = sr_coords["lat"], sr_coords["lon"]
                     sr_location_name = sr_prefecture
 
-                # UTをJSTに変換して表示
+                # ▼▼▼【エラー修正】ユリウス日からdatetimeオブジェクトへの変換ロジックを修正 ▼▼▼
                 y, m, d, h_decimal = swe.revjul(jd_solar_return_ut, swe.GREG_CAL)
-                sr_dt_utc = datetime.fromtimestamp(swe.julday(y, m, d, h_decimal), tz=timezone.utc)
+                sr_dt_utc = datetime(y, m, d, tzinfo=timezone.utc) + timedelta(hours=h_decimal)
                 sr_dt_local = sr_dt_utc.astimezone(jst)
 
                 sr_header = f"🎂 ## {return_year}年 ソーラーリターンチャート ##\n({sr_dt_local.strftime('%Y-%m-%d %H:%M:%S')} @ {sr_location_name})"
