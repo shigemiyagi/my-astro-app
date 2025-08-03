@@ -298,6 +298,14 @@ with st.form(key='birth_info_form'):
         birth_lon = b_col2.number_input("出生地の経度 (東経+, 西経-)", -180.0, 180.0, 139.692, format="%.4f", disabled=not use_manual_coords_birth)
 
     with col2:
+        st.subheader("トランジット・プログレス用の情報")
+        # トランジット日付の指定
+        transit_date = st.date_input("📅 トランジット日付", min_value=datetime(1900, 1, 1), max_value=datetime(2100, 12, 31), value=datetime.now())
+        transit_time_str = st.text_input("⏰ トランジット時刻 (24時間表記)", value=datetime.now().strftime("%H:%M"))
+        
+        # プログレス年数の指定
+        progress_year = st.number_input("プログレスを計算する年数", min_value=0, max_value=150, value=int((datetime.now() - datetime(1976, 12, 25)).days / 365.25))
+        
         st.subheader("ソーラーリターン用の情報")
         return_year = st.number_input("ソーラーリターンを計算する年", min_value=1900, max_value=2100, value=datetime.now().year)
         
@@ -344,10 +352,11 @@ if submit_button:
             lat, lon = coords["lat"], coords["lon"]
             birth_location_name = selected_prefecture
         
-        progressed_days = (datetime.now(timezone.utc).date() - birth_time_utc.date()).days
-        age = int(progressed_days / 365.25) # 参考用の満年齢
+        # プログレス年数から日数を計算（ヘッダー表示用）
+        progressed_days = progress_year * 365.25
+        age = progress_year # プログレス年数を年齢として使用
 
-        header_str = f"✨ {birth_date.year}年{birth_date.month}月{birth_date.day}日 {birth_time.strftime('%H:%M')}生 ({birth_location_name}) - 年齢: {age}歳"
+        header_str = f"✨ {birth_date.year}年{birth_date.month}月{birth_date.day}日 {birth_time.strftime('%H:%M')}生 ({birth_location_name}) - プログレス年齢: {age}歳"
         st.header(header_str)
         results_to_copy.append(header_str)
 
@@ -368,24 +377,39 @@ if submit_button:
 
         # --- 3. トランジット情報 ---
         with st.spinner("トランジットを計算中..."):
-            results_to_copy.append("\n" + "="*40); results_to_copy.append("--- トランジット ---")
-            transit_dt_utc = datetime.now(timezone.utc)
+            # トランジット日時の計算
+            transit_dt_utc = datetime.strptime(f"{transit_date.year}-{transit_date.month}-{transit_date.day} {transit_time_str}", "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
             jd_ut_transit, _ = swe.utc_to_jd(transit_dt_utc.year, transit_dt_utc.month, transit_dt_utc.day, transit_dt_utc.hour, transit_dt_utc.minute, transit_dt_utc.second, 1)
+            
+            # トランジット日時をJSTに変換
+            transit_dt_jst = transit_dt_utc.astimezone(jst)
+            transit_header = f"--- トランジット ---\n📅 トランジット算出日時: {transit_dt_jst.strftime('%Y-%m-%d %H:%M:%S')} JST"
+            results_to_copy.append("\n" + "="*40); results_to_copy.append(transit_header)
+            
             transit_points, _, _ = calculate_celestial_points(jd_ut_transit, lat, lon) # トランジットのハウスは通常見ないので緯度経度はネイタルを使用
             calculate_aspects(transit_points, natal_points, "T.", "N.", results_to_copy)
 
         # --- 4. プログレス情報 (一日一年法) ---
         with st.spinner("プログレスを計算中..."):
-            results_to_copy.append("\n" + "="*40); results_to_copy.append(f"--- プログレス (出生後{progressed_days}日目) ---")
+            # プログレス年数から日数を計算
+            progressed_days = progress_year * 365.25
             prog_dt_utc = birth_time_utc + timedelta(days=progressed_days)
             jd_ut_prog, _ = swe.utc_to_jd(prog_dt_utc.year, prog_dt_utc.month, prog_dt_utc.day, prog_dt_utc.hour, prog_dt_utc.minute, prog_dt_utc.second, 1)
+            
+            # プログレス日時をJSTに変換
+            prog_dt_jst = prog_dt_utc.astimezone(jst)
+            progress_header = f"--- プログレス (出生後{progress_year}年 = {progressed_days:.0f}日目) ---\n📅 プログレス算出日時: {prog_dt_jst.strftime('%Y-%m-%d %H:%M:%S')} JST"
+            results_to_copy.append("\n" + "="*40); results_to_copy.append(progress_header)
+            
             progressed_points, _, _ = calculate_celestial_points(jd_ut_prog, lat, lon)
             # プログレスでは通常、主要7天体+キロンなどを見るため、表示を絞ることも可能
             calculate_aspects(progressed_points, natal_points, "P.", "N.", results_to_copy)
 
         # --- 5. ソーラーアーク情報 ---
         with st.spinner("ソーラーアークを計算中..."):
-            results_to_copy.append("\n" + "="*40); results_to_copy.append("--- ソーラーアーク ---")
+            solar_arc_header = f"--- ソーラーアーク (出生後{progress_year}年) ---"
+            results_to_copy.append("\n" + "="*40); results_to_copy.append(solar_arc_header)
+            
             progressed_sun_pos = progressed_points["太陽"]['pos']
             natal_sun_pos = natal_points["太陽"]['pos']
             solar_arc = (progressed_sun_pos - natal_sun_pos + ZODIAC_DEGREES) % ZODIAC_DEGREES
