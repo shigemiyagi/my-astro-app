@@ -203,7 +203,20 @@ def format_houses_to_string_list(cusps, title):
 
 # --- アスペクト・ハーモニクス計算関数 ---
 
-def calculate_aspects(points1, points2, prefix1, prefix2, results_list):
+def get_celestial_info(point_name, point_data, cusps):
+    """天体のサインとハウス情報を取得する"""
+    pos = point_data['pos']
+    sign_index = int(pos / DEGREES_PER_SIGN)
+    sign_name = SIGN_NAMES[sign_index]
+    
+    house_info = ""
+    if cusps and point_name not in SENSITIVE_POINTS:
+        house_num = get_house_number(pos, cusps)
+        house_info = f"{house_num}ハウス"
+    
+    return sign_name, house_info
+
+def calculate_aspects(points1, points2, prefix1, prefix2, results_list, cusps1=None, cusps2=None):
     """2つの天体群間のアスペクトを計算し、結果リストに追加する"""
     results_list.append(f"\n💫 ## {prefix1.strip('.')} - {prefix2.strip('.')} アスペクト ##")
     found_aspects = []
@@ -232,7 +245,23 @@ def calculate_aspects(points1, points2, prefix1, prefix2, results_list):
                 
                 current_orb = abs(angle_diff - params['angle'])
                 if current_orb < orb:
-                    line = f"{prefix1}{p1_name} - {prefix2}{p2_name}: {aspect_name} (オーブ {current_orb:.2f}度)"
+                    # 天体1のサインとハウス情報を取得
+                    sign1, house1 = get_celestial_info(p1_name, p1, cusps1)
+                    # 天体2のサインとハウス情報を取得
+                    sign2, house2 = get_celestial_info(p2_name, p2, cusps2)
+                    
+                    # ハウス情報を含む文字列を作成
+                    p1_info = f"{prefix1}{p1_name}（{sign1}"
+                    if house1:
+                        p1_info += f"、{house1}"
+                    p1_info += "）"
+                    
+                    p2_info = f"{prefix2}{p2_name}（{sign2}"
+                    if house2:
+                        p2_info += f"、{house2}"
+                    p2_info += "）"
+                    
+                    line = f"{p1_info} - {p2_info}: {aspect_name} (オーブ {current_orb:.2f}度)"
                     found_aspects.append(line)
 
     if found_aspects:
@@ -240,7 +269,7 @@ def calculate_aspects(points1, points2, prefix1, prefix2, results_list):
     else:
         results_list.append("設定されたオーブ内に主要なアスペクトは見つかりませんでした。")
 
-def calculate_harmonic_conjunctions(natal_points, results_list):
+def calculate_harmonic_conjunctions(natal_points, results_list, natal_cusps=None):
     """ハーモニクスでコンジャンクションになるアスペクトを計算する"""
     results_list.append("\n" + "="*40)
     results_list.append("--- ハーモニクス ---")
@@ -264,7 +293,22 @@ def calculate_harmonic_conjunctions(natal_points, results_list):
             for n in TARGET_HARMONICS:
                 harmonic_angle = (angle * n) % 360
                 if harmonic_angle < HARMONIC_ORB or harmonic_angle > (360 - HARMONIC_ORB):
-                    line = f"N.{p1_name} - N.{p2_name} (約 {angle:.1f}度) は **H{n}** でコンジャンクションになります。"
+                    # 天体のサインとハウス情報を取得
+                    sign1, house1 = get_celestial_info(p1_name, p1, natal_cusps)
+                    sign2, house2 = get_celestial_info(p2_name, p2, natal_cusps)
+                    
+                    # ハウス情報を含む文字列を作成
+                    p1_info = f"N.{p1_name}（{sign1}"
+                    if house1:
+                        p1_info += f"、{house1}"
+                    p1_info += "）"
+                    
+                    p2_info = f"N.{p2_name}（{sign2}"
+                    if house2:
+                        p2_info += f"、{house2}"
+                    p2_info += "）"
+                    
+                    line = f"{p1_info} - {p2_info} (約 {angle:.1f}度) は **H{n}** でコンジャンクションになります。"
                     found_harmonics.append(line)
 
     if found_harmonics:
@@ -366,14 +410,14 @@ if submit_button:
             natal_points, natal_cusps, _ = calculate_celestial_points(jd_ut_natal, lat, lon)
             results_to_copy.extend(format_points_to_string_list(natal_points, natal_cusps, "ネイタルチャート"))
             results_to_copy.extend(format_houses_to_string_list(natal_cusps, "ハウス (ネイタル)"))
-            calculate_aspects(natal_points, natal_points, "N.", "N.", results_to_copy)
+            calculate_aspects(natal_points, natal_points, "N.", "N.", results_to_copy, natal_cusps, natal_cusps)
 
         # --- 2. ネイタルチャート計算 (ヘリオセントリック) ---
         with st.spinner("ヘリオセントリックを計算中..."):
             results_to_copy.append("\n" + "="*40); results_to_copy.append("--- ヘリオセントリック (ネイタル) ---")
             helio_points, _, _ = calculate_celestial_points(jd_ut_natal, lat, lon, is_helio=True)
             results_to_copy.extend(format_points_to_string_list(helio_points, None, "ネイタルチャート (ヘリオ)"))
-            calculate_aspects(helio_points, helio_points, "H.", "H.", results_to_copy)
+            calculate_aspects(helio_points, helio_points, "H.", "H.", results_to_copy, None, None)
 
         # --- 3. トランジット情報 ---
         with st.spinner("トランジットを計算中..."):
@@ -387,7 +431,7 @@ if submit_button:
             results_to_copy.append("\n" + "="*40); results_to_copy.append(transit_header)
             
             transit_points, _, _ = calculate_celestial_points(jd_ut_transit, lat, lon) # トランジットのハウスは通常見ないので緯度経度はネイタルを使用
-            calculate_aspects(transit_points, natal_points, "T.", "N.", results_to_copy)
+            calculate_aspects(transit_points, natal_points, "T.", "N.", results_to_copy, None, natal_cusps)
 
         # --- 4. プログレス情報 (一日一年法) ---
         with st.spinner("プログレスを計算中..."):
@@ -403,7 +447,7 @@ if submit_button:
             
             progressed_points, _, _ = calculate_celestial_points(jd_ut_prog, lat, lon)
             # プログレスでは通常、主要7天体+キロンなどを見るため、表示を絞ることも可能
-            calculate_aspects(progressed_points, natal_points, "P.", "N.", results_to_copy)
+            calculate_aspects(progressed_points, natal_points, "P.", "N.", results_to_copy, natal_cusps, natal_cusps)
 
         # --- 5. ソーラーアーク情報 ---
         with st.spinner("ソーラーアークを計算中..."):
@@ -419,7 +463,7 @@ if submit_button:
                 if name == "PoF": continue # PoFは通常アークさせない
                 sa_pos = (data['pos'] + solar_arc) % ZODIAC_DEGREES
                 solar_arc_points[name] = {'id': data['id'], 'pos': sa_pos, 'is_luminary': data['is_luminary']}
-            calculate_aspects(solar_arc_points, natal_points, "SA.", "N.", results_to_copy)
+            calculate_aspects(solar_arc_points, natal_points, "SA.", "N.", results_to_copy, natal_cusps, natal_cusps)
 
         # --- 6. ソーラーリターン情報 ---
         with st.spinner("ソーラーリターンを計算中..."):
@@ -450,12 +494,12 @@ if submit_button:
                 sr_points, sr_cusps, _ = calculate_celestial_points(jd_solar_return_ut, sr_lat, sr_lon)
                 results_to_copy.extend(format_points_to_string_list(sr_points, sr_cusps, "惑星のサイン (ソーラーリターン)"))
                 results_to_copy.extend(format_houses_to_string_list(sr_cusps, "ハウス (ソーラーリターン)"))
-                calculate_aspects(sr_points, sr_points, "SR.", "SR.", results_to_copy)
-                calculate_aspects(sr_points, natal_points, "SR.", "N.", results_to_copy) # リターンとネイタルの二重円
+                calculate_aspects(sr_points, sr_points, "SR.", "SR.", results_to_copy, sr_cusps, sr_cusps)
+                calculate_aspects(sr_points, natal_points, "SR.", "N.", results_to_copy, sr_cusps, natal_cusps) # リターンとネイタルの二重円
 
         # --- 7. ハーモニクス情報 ---
         with st.spinner("ハーモニクスを計算中..."):
-            calculate_harmonic_conjunctions(natal_points, results_to_copy)
+            calculate_harmonic_conjunctions(natal_points, results_to_copy, natal_cusps)
 
         # --- 最終結果の表示 ---
         st.success("全ての計算が完了しました。")
