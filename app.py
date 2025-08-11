@@ -249,12 +249,16 @@ def calculate_aspects(points1, points2, prefix1, prefix2, results_list, cusps1=N
                     sign1, house1 = get_celestial_info(p1_name, p1, cusps1)
                     sign2, house2 = get_celestial_info(p2_name, p2, cusps2)
                     
-                    p1_info = f"{prefix1}{p1_name}（{sign1}"
+                    # 逆行している場合は「R」を追加
+                    p1_retro = "R" if p1.get('is_retro', False) else ""
+                    p2_retro = "R" if p2.get('is_retro', False) else ""
+                    
+                    p1_info = f"{prefix1}{p1_name}{p1_retro}（{sign1}"
                     if house1:
                         p1_info += f"、{house1}"
                     p1_info += "）"
                     
-                    p2_info = f"{prefix2}{p2_name}（{sign2}"
+                    p2_info = f"{prefix2}{p2_name}{p2_retro}（{sign2}"
                     if house2:
                         p2_info += f"、{house2}"
                     p2_info += "）"
@@ -317,6 +321,8 @@ def calculate_transit_aspects_with_period(natal_points, start_jd, end_jd, lat, l
                             if current_jd - aspect_periods[key]['end_jd'] <= 1.5:
                                 aspect_periods[key]['end_jd'] = current_jd
                                 aspect_periods[key]['min_orb'] = min(aspect_periods[key]['min_orb'], current_orb)
+                                # 最新の逆行状態を保持
+                                aspect_periods[key]['t_data'] = t_data
     
     # 期間をフォーマットして出力
     formatted_aspects = []
@@ -332,8 +338,12 @@ def calculate_transit_aspects_with_period(natal_points, start_jd, end_jd, lat, l
         t_sign = SIGN_NAMES[int(period_info['t_data']['pos'] / DEGREES_PER_SIGN)]
         n_sign, n_house = get_celestial_info(n_name, period_info['n_data'], natal_cusps)
         
-        t_info = f"T.{t_name}（{t_sign}）"
-        n_info = f"N.{n_name}（{n_sign}"
+        # 逆行している場合は「R」を追加
+        t_retro = "R" if period_info['t_data'].get('is_retro', False) else ""
+        n_retro = "R" if period_info['n_data'].get('is_retro', False) else ""
+        
+        t_info = f"T.{t_name}{t_retro}（{t_sign}）"
+        n_info = f"N.{n_name}{n_retro}（{n_sign}"
         if n_house:
             n_info += f"、{n_house}"
         n_info += "）"
@@ -377,12 +387,16 @@ def calculate_harmonic_conjunctions(natal_points, results_list, natal_cusps=None
                     sign1, house1 = get_celestial_info(p1_name, p1, natal_cusps)
                     sign2, house2 = get_celestial_info(p2_name, p2, natal_cusps)
                     
-                    p1_info = f"N.{p1_name}（{sign1}"
+                    # 逆行している場合は「R」を追加
+                    p1_retro = "R" if p1.get('is_retro', False) else ""
+                    p2_retro = "R" if p2.get('is_retro', False) else ""
+                    
+                    p1_info = f"N.{p1_name}{p1_retro}（{sign1}"
                     if house1:
                         p1_info += f"、{house1}"
                     p1_info += "）"
                     
-                    p2_info = f"N.{p2_name}（{sign2}"
+                    p2_info = f"N.{p2_name}{p2_retro}（{sign2}"
                     if house2:
                         p2_info += f"、{house2}"
                     p2_info += "）"
