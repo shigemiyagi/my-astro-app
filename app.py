@@ -284,6 +284,7 @@ def calculate_transit_aspects_with_period(natal_points, start_jd, end_jd, lat, l
     # 1日ごとにチェック（精度のため）
     days_to_check = int(end_jd - start_jd) + 1
     
+    # まず1年間の期間でアスペクトを検出
     for day_offset in range(days_to_check):
         current_jd = start_jd + day_offset
         transit_points, _, _ = calculate_celestial_points(current_jd, lat, lon)
@@ -314,7 +315,10 @@ def calculate_transit_aspects_with_period(natal_points, start_jd, end_jd, lat, l
                                 'end_jd': current_jd,
                                 'min_orb': current_orb,
                                 't_data': t_data,
-                                'n_data': n_data
+                                'n_data': n_data,
+                                'orb': orb,
+                                'aspect_angle': params['angle'],
+                                'extends_beyond': False  # 1年を超えて継続するかのフラグ
                             }
                         else:
                             # 連続していれば期間を延長
@@ -323,6 +327,39 @@ def calculate_transit_aspects_with_period(natal_points, start_jd, end_jd, lat, l
                                 aspect_periods[key]['min_orb'] = min(aspect_periods[key]['min_orb'], current_orb)
                                 # 最新の逆行状態を保持
                                 aspect_periods[key]['t_data'] = t_data
+    
+    # 1年後も継続しているアスペクトについて、実際の終了日を探す
+    for key, period_info in aspect_periods.items():
+        if abs(period_info['end_jd'] - end_jd) < 1:  # 1年後まで継続している場合
+            t_name, n_name, aspect_name = key
+            extended_jd = end_jd + 1
+            max_extension = 365  # 最大でさらに1年先まで探索
+            
+            # アスペクトが解けるまで探索を続ける
+            for extra_days in range(1, max_extension):
+                extended_jd = end_jd + extra_days
+                transit_points, _, _ = calculate_celestial_points(extended_jd, lat, lon)
+                
+                if t_name in transit_points:
+                    t_data = transit_points[t_name]
+                    n_data = period_info['n_data']
+                    
+                    angle_diff = abs(t_data['pos'] - n_data['pos'])
+                    if angle_diff > 180:
+                        angle_diff = 360 - angle_diff
+                    
+                    current_orb = abs(angle_diff - period_info['aspect_angle'])
+                    
+                    # オーブ外になったら終了
+                    if current_orb >= period_info['orb']:
+                        period_info['end_jd'] = extended_jd - 1  # 前日が最後の日
+                        period_info['extends_beyond'] = True
+                        break
+                else:
+                    # 天体が見つからない場合は前日で終了
+                    period_info['end_jd'] = extended_jd - 1
+                    period_info['extends_beyond'] = True
+                    break
     
     # 期間をフォーマットして出力
     formatted_aspects = []
@@ -348,7 +385,12 @@ def calculate_transit_aspects_with_period(natal_points, start_jd, end_jd, lat, l
             n_info += f"、{n_house}"
         n_info += "）"
         
-        period_str = f"（{start_dt.strftime('%Y年%m月%d日')}〜{end_dt.strftime('%Y年%m月%d日')}）"
+        # 1年を超えて継続する場合は特別な表記
+        if period_info.get('extends_beyond', False):
+            period_str = f"（{start_dt.strftime('%Y年%m月%d日')}〜{end_dt.strftime('%Y年%m月%d日')}※）"
+        else:
+            period_str = f"（{start_dt.strftime('%Y年%m月%d日')}〜{end_dt.strftime('%Y年%m月%d日')}）"
+        
         line = f"{t_info} - {n_info}: {aspect_name} {period_str}"
         formatted_aspects.append((start_dt, line))
     
@@ -358,6 +400,10 @@ def calculate_transit_aspects_with_period(natal_points, start_jd, end_jd, lat, l
     if formatted_aspects:
         for _, line in formatted_aspects:
             results_list.append(line)
+        
+        # 1年を超えて継続するアスペクトがある場合は注記を追加
+        if any(period_info.get('extends_beyond', False) for period_info in aspect_periods.values()):
+            results_list.append("\n※印は1年を超えて継続するアスペクトの実際の終了日を示しています")
     else:
         results_list.append("今後1年間で形成される主要なアスペクトは見つかりませんでした。")
 
